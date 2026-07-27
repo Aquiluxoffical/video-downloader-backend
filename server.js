@@ -5,7 +5,7 @@ const app = express();
 app.use(cors());
 
 app.get('/', (req, res) => {
-    res.send('OmniStream 4K Engine Active!');
+    res.send('OmniStream Engine Online');
 });
 
 app.get('/api/download', async (req, res) => {
@@ -13,16 +13,17 @@ app.get('/api/download', async (req, res) => {
     const quality = req.query.quality || '1080';
 
     if (!videoUrl) {
-        return res.status(400).send('Video URL is required');
+        return res.status(400).send('Video URL parameter missing!');
     }
 
     try {
-        // Cobalt public API for instant anti-bot video extraction
+        // Primary Processing via Cobalt API Engine
         const response = await fetch('https://api.cobalt.tools/api/json', {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
             },
             body: JSON.stringify({
                 url: videoUrl,
@@ -33,18 +34,22 @@ app.get('/api/download', async (req, res) => {
 
         const data = await response.json();
 
-        // Redirect to direct clean video stream
+        // Redirect directly to high speed downloadable stream
         if (data.url) {
             return res.redirect(data.url);
         } else if (data.picker && data.picker.length > 0) {
             return res.redirect(data.picker[0].url);
+        } else if (data.status === 'tunnel' || data.status === 'redirect') {
+            return res.redirect(data.url);
         } else {
-            return res.status(500).send('Video stream not found or link private.');
+            // Secondary Fallback Engine if Cobalt returns stream error
+            const fallbackUrl = `https://loader.to/api/ajax/getdata?format=${quality === 'mp3' ? 'mp3' : quality}&url=${encodeURIComponent(videoUrl)}`;
+            return res.redirect(fallbackUrl);
         }
 
     } catch (err) {
-        console.error('Fetch error:', err);
-        return res.status(500).send('API Processing Error');
+        console.error('API Error:', err);
+        return res.status(500).send('Server Error. Please try a public video link.');
     }
 });
 
