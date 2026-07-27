@@ -1,45 +1,60 @@
 const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const app = express();
 
 app.use(cors());
 
-// Health Check Route
 app.get('/', (req, res) => {
-    res.send('OmniStream 4K Backend Server Active!');
+    res.send('OmniStream 4K Engine Ready');
 });
 
-// Download API Route
 app.get('/api/download', (req, res) => {
     const videoUrl = req.query.url;
     const quality = req.query.quality || '1080';
 
     if (!videoUrl) {
-        return res.status(400).send('Video URL missing');
+        return res.status(400).send('Video URL is required');
     }
 
-    res.header('Content-Type', 'video/mp4');
-    res.header('Content-Disposition', `attachment; filename="video_${quality}p.mp4"`);
+    // Unique temp file path generate karein
+    const timestamp = Date.now();
+    const tempFilePath = path.join(__dirname, `video_${timestamp}.mp4`);
 
+    // Quality/Format rules
     let format = `bestvideo[height<=${quality}]+bestaudio/best[height<=${quality}]/best`;
     if (quality === 'mp3') {
         format = 'bestaudio/best';
     }
 
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36';
-    const command = `yt-dlp --user-agent "${userAgent}" -f "${format}" -o - "${videoUrl}"`;
+    // High quality User-Agent to bypass Anti-Bot blocking
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    
+    // Command: Pehle complete file server par download hoti hai
+    const command = `yt-dlp --user-agent "${userAgent}" --no-playlist -f "${format}" -o "${tempFilePath}" "${videoUrl}"`;
 
-    const child = exec(command, { maxBuffer: 1024 * 1024 * 1000 });
+    console.log(`Processing URL: ${videoUrl} with quality ${quality}p`);
 
-    child.stdout.pipe(res);
+    exec(command, { maxBuffer: 1024 * 1024 * 1000 }, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`yt-dlp error: ${error.message}`);
+            return res.status(500).send('Failed to process video on server.');
+        }
 
-    child.stderr.on('data', (data) => console.log(`yt-dlp log: ${data}`));
-    child.on('error', (err) => {
-        console.error('Execution Error:', err);
-        if (!res.headersSent) res.status(500).send('Download Error');
+        // File download hone ke baad Browser ko send karein
+        res.download(tempFilePath, `video_${quality}p.mp4`, (err) => {
+            if (err) {
+                console.error(`Send error: ${err}`);
+            }
+            // Send karne ke baad temporary file delete kar dein
+            fs.unlink(tempFilePath, (unlinkErr) => {
+                if (unlinkErr) console.error(`Unlink error: ${unlinkErr}`);
+            });
+        });
     });
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
